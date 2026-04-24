@@ -1,11 +1,27 @@
 # Claude Cache Monitor
 
+[中文说明](./README.zh-CN.md)
+
 Claude Cache Monitor is a local macOS helper for Claude Code when Claude is routed through OpenRouter.
 
 It has two parts:
 
 - `openrouter-ttl-1h-proxy.mjs`: a local HTTP proxy on `127.0.0.1:3456` that forwards Anthropic Messages API traffic to OpenRouter, injects a stable `session_id`, and forces Opus prompt cache TTLs to `1h`.
 - `ClaudeCacheStatusApp`: a SwiftUI menu bar app that polls the proxy status endpoint and shows active cache writes, TTL remaining, token totals, and cost totals.
+
+## Screenshot
+
+![Claude Cache Monitor status bar screenshot](./docs/assets/status-bar-screenshot.png)
+
+The screenshot shows the menu bar idle state: the proxy is healthy and there are currently `0` active cache writes.
+
+## Why This Project Matters
+
+- Claude Code through OpenRouter can be opaque: it is hard to tell whether prompt cache writes are active, how long they remain useful, and whether a session is reusing cache effectively.
+- Opus cache TTL behavior matters for long coding sessions. This proxy consistently requests a `1h` ephemeral cache TTL for Opus models while leaving non-Opus models unchanged.
+- Stable session IDs make cache behavior easier to reason about across repeated Claude Code requests.
+- The menu bar app turns cache state into a visible operational signal: active writes, TTL remaining, token totals, cache read/write totals, cost, and a 24-hour write trend.
+- Everything runs locally. The project does not add an external telemetry service; it only forwards the API traffic you already send to OpenRouter.
 
 ## Features
 
@@ -110,6 +126,7 @@ export ANTHROPIC_BASE_URL="http://127.0.0.1:4567"
 ```text
 .
 ├── .github/workflows/ci.yml
+├── docs/assets/status-bar-screenshot.png
 ├── launchd/
 │   ├── com.qi.claude-cache-status.plist.template
 │   └── com.qi.claude-openrouter-ttl-1h.plist.template
@@ -122,7 +139,8 @@ export ANTHROPIC_BASE_URL="http://127.0.0.1:4567"
 ├── test/proxy.test.mjs
 ├── openrouter-ttl-1h-proxy.mjs
 ├── package.json
-└── README.md
+├── README.md
+└── README.zh-CN.md
 ```
 
 ## Logs
