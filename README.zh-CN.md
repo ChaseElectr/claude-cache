@@ -11,9 +11,9 @@ Claude Cache Monitor 是一个面向 macOS 的本地辅助工具，用于在 Cla
 
 ## 状态栏截图
 
-![Claude Cache Monitor 状态栏截图](./docs/assets/status-bar-screenshot.png)
+![Claude Cache Monitor 菜单栏展开面板截图](./docs/assets/status-panel-screenshot.png)
 
-截图展示的是菜单栏空闲态：代理健康运行，当前活跃缓存写入数为 `0`。
+截图使用脱敏示例数据，展示菜单栏展开面板里能看到的内容：代理健康状态、活跃缓存写入数、token 汇总、成本、24 小时缓存写入趋势，以及单次活跃缓存写入详情。
 
 ## 主要价值
 
@@ -127,7 +127,7 @@ export ANTHROPIC_BASE_URL="http://127.0.0.1:4567"
 ```text
 .
 ├── .github/workflows/ci.yml
-├── docs/assets/status-bar-screenshot.png
+├── docs/assets/status-panel-screenshot.png
 ├── launchd/
 │   ├── com.qi.claude-cache-status.plist.template
 │   └── com.qi.claude-openrouter-ttl-1h.plist.template

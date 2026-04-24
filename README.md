@@ -11,9 +11,9 @@ It has two parts:
 
 ## Screenshot
 
-![Claude Cache Monitor status bar screenshot](./docs/assets/status-bar-screenshot.png)
+![Claude Cache Monitor menu bar popover screenshot](./docs/assets/status-panel-screenshot.png)
 
-The screenshot shows the menu bar idle state: the proxy is healthy and there are currently `0` active cache writes.
+The screenshot uses sanitized demo data to show the menu bar popover content: proxy health, active cache writes, token totals, cost, the 24-hour cache-write trend, and one active cache-write detail.
 
 ## Why This Project Matters
 
@@ -126,7 +126,7 @@ export ANTHROPIC_BASE_URL="http://127.0.0.1:4567"
 ```text
 .
 ├── .github/workflows/ci.yml
-├── docs/assets/status-bar-screenshot.png
+├── docs/assets/status-panel-screenshot.png
 ├── launchd/
 │   ├── com.qi.claude-cache-status.plist.template
 │   └── com.qi.claude-openrouter-ttl-1h.plist.template
