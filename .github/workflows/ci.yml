@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: macos-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Check proxy syntax
+        run: npm run check:proxy
+
+      - name: Run proxy tests
+        run: npm test
+
+      - name: Build menu bar app
+        run: npm run build:menubar
+
+      - name: Validate launchd templates
+        run: npm run check:plist

@@ -1,0 +1,32 @@
+{
+  "name": "claude-cache-monitor",
+  "version": "0.1.0",
+  "description": "Local OpenRouter proxy and macOS menu bar monitor for Claude prompt cache status.",
+  "type": "module",
+  "bin": {
+    "claude-cache-proxy": "./openrouter-ttl-1h-proxy.mjs"
+  },
+  "scripts": {
+    "start": "node ./openrouter-ttl-1h-proxy.mjs",
+    "test": "node --test",
+    "check:proxy": "node --check ./openrouter-ttl-1h-proxy.mjs",
+    "build:menubar": "swift build -c release --package-path ./menubar-app",
+    "check:plist": "plutil -lint ./launchd/*.plist.template",
+    "check": "npm run check:proxy && npm test && npm run build:menubar && npm run check:plist",
+    "install:launchd": "./scripts/install-launchd.sh",
+    "uninstall:launchd": "./scripts/uninstall-launchd.sh",
+    "status": "curl -fsS http://127.0.0.1:${CLAUDE_CACHE_PORT:-3456}/__status | python3 -m json.tool"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "claude",
+    "openrouter",
+    "prompt-cache",
+    "macos",
+    "launchd",
+    "swiftui"
+  ],
+  "license": "MIT"
+}

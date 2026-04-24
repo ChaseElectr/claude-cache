@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>Label</key>
+    <string>com.qi.claude-openrouter-ttl-1h</string>
+
+    <key>ProgramArguments</key>
+    <array>
+      <string>__NODE_BIN__</string>
+      <string>__PROJECT_ROOT__/openrouter-ttl-1h-proxy.mjs</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>__PROJECT_ROOT__</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+      <key>CLAUDE_CACHE_HOST</key>
+      <string>__CLAUDE_CACHE_HOST__</string>
+      <key>CLAUDE_CACHE_PORT</key>
+      <string>__CLAUDE_CACHE_PORT__</string>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>__HOME__/Library/Logs/claude-openrouter-ttl-1h.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>__HOME__/Library/Logs/claude-openrouter-ttl-1h.error.log</string>
+  </dict>
+</plist>

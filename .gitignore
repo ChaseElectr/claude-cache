@@ -1,0 +1,34 @@
+.DS_Store
+Thumbs.db
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+
+# Logs and runtime state
+*.log
+*.pid
+*.tmp
+coverage/
+.nyc_output/
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Swift Package Manager / Xcode
+.build/
+.swiftpm/
+DerivedData/
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+*.xcuserstate
+menubar-app/.build/
+menubar-app/.swiftpm/
+
+# Local generated LaunchAgent files, if copied here manually
+*.plist.generated
