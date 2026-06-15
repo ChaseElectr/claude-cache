@@ -9,11 +9,12 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 const SERVICE_NAME = "claude-openrouter-ttl-1h";
-const SERVICE_VERSION = 8;
+const SERVICE_VERSION = 9;
 const LISTEN_HOST = readEnvString("CLAUDE_CACHE_HOST", "127.0.0.1");
 const LISTEN_PORT = readEnvInteger("CLAUDE_CACHE_PORT", 3456);
 const STATUS_PATH = "/__status";
-const UPSTREAM_BASE_URL = new URL(
+const CONFIG_PATH = "/__config";
+const DEFAULT_UPSTREAM_BASE_URL = new URL(
   readEnvString("OPENROUTER_BASE_URL", "https://openrouter.ai/api"),
 );
 const APP_SUPPORT_DIR = readEnvString(
@@ -107,6 +108,29 @@ function coerceNumber(value) {
 
 function coerceString(value) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function normalizeUpstreamBaseUrl(value) {
+  const text = coerceString(value);
+  if (!text) {
+    return null;
+  }
+
+  try {
+    const url = new URL(text);
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      return null;
+    }
+    url.hash = "";
+    return url.href;
+  } catch {
+    return null;
+  }
+}
+
+function getUpstreamBaseUrl() {
+  const configured = normalizeUpstreamBaseUrl(persistedState.config?.upstream_base_url);
+  return new URL(configured || DEFAULT_UPSTREAM_BASE_URL.href);
 }
 
 function isJsonRequest(contentType = "") {
@@ -226,8 +250,8 @@ function joinPath(basePath, requestPath) {
 
 function buildUpstreamUrl(requestUrl = "/") {
   const incoming = new URL(requestUrl, "http://127.0.0.1");
-  const upstream = new URL(UPSTREAM_BASE_URL);
-  upstream.pathname = joinPath(UPSTREAM_BASE_URL.pathname, incoming.pathname);
+  const upstream = getUpstreamBaseUrl();
+  upstream.pathname = joinPath(upstream.pathname, incoming.pathname);
   upstream.search = incoming.search;
   return upstream;
 }
@@ -235,6 +259,9 @@ function buildUpstreamUrl(requestUrl = "/") {
 function createInitialState() {
   return {
     version: SERVICE_VERSION,
+    config: {
+      upstream_base_url: DEFAULT_UPSTREAM_BASE_URL.href,
+    },
     service: {
       started_at: nowIso(),
       last_updated_at: nowIso(),
@@ -333,6 +360,11 @@ async function loadPersistedState() {
     const raw = await fs.readFile(STATE_FILE, "utf8");
     const parsed = JSON.parse(raw);
     const state = createInitialState();
+
+    const upstreamBaseUrl = normalizeUpstreamBaseUrl(parsed?.config?.upstream_base_url);
+    if (upstreamBaseUrl) {
+      state.config.upstream_base_url = upstreamBaseUrl;
+    }
 
     if (isObject(parsed?.service)) {
       state.service.started_at = coerceString(parsed.service.started_at) || state.service.started_at;
@@ -1200,7 +1232,7 @@ function buildStatusSnapshot() {
       last_updated_at: persistedState.service.last_updated_at,
       listen_host: LISTEN_HOST,
       listen_port: LISTEN_PORT,
-      upstream_base_url: UPSTREAM_BASE_URL.href,
+      upstream_base_url: getUpstreamBaseUrl().href,
       cache_ttl_seconds: OPUS_CACHE_TTL_SECONDS,
       total_requests_served: persistedState.service.total_requests_served,
       total_generations_observed: persistedState.service.total_generations_observed,
@@ -1219,6 +1251,7 @@ function buildStatusSnapshot() {
       cache_write_chart_window_seconds: Math.floor(CACHE_WRITE_CHART_WINDOW_MS / 1000),
       cache_write_chart_bucket_seconds: Math.floor(CACHE_WRITE_CHART_BUCKET_MS / 1000),
       status_endpoint: `http://${LISTEN_HOST}:${LISTEN_PORT}${STATUS_PATH}`,
+      config_endpoint: `http://${LISTEN_HOST}:${LISTEN_PORT}${CONFIG_PATH}`,
     },
     cache_write_buckets_24h: cacheWriteBuckets24h,
     cache_writes: cacheWrites,
@@ -1279,15 +1312,84 @@ function createStreamParser(onPayload) {
   };
 }
 
-async function handleStatusRequest(res) {
-  const payload = buildStatusSnapshot();
+function buildConfigSnapshot() {
+  return {
+    upstream_base_url: getUpstreamBaseUrl().href,
+    default_upstream_base_url: DEFAULT_UPSTREAM_BASE_URL.href,
+    config_endpoint: `http://${LISTEN_HOST}:${LISTEN_PORT}${CONFIG_PATH}`,
+  };
+}
+
+function updateConfig(updates) {
+  if (!isObject(updates)) {
+    throw Object.assign(new Error("config payload must be a JSON object"), { statusCode: 400 });
+  }
+
+  const upstreamBaseUrl = normalizeUpstreamBaseUrl(updates.upstream_base_url);
+  if (!upstreamBaseUrl) {
+    throw Object.assign(new Error("upstream_base_url must be an http(s) URL"), { statusCode: 400 });
+  }
+
+  persistedState.config = {
+    ...(isObject(persistedState.config) ? persistedState.config : {}),
+    upstream_base_url: upstreamBaseUrl,
+  };
+  touchServiceState();
+  return buildConfigSnapshot();
+}
+
+function resetConfig() {
+  persistedState.config = {
+    ...(isObject(persistedState.config) ? persistedState.config : {}),
+    upstream_base_url: DEFAULT_UPSTREAM_BASE_URL.href,
+  };
+  touchServiceState();
+  return buildConfigSnapshot();
+}
+
+function writeJson(res, statusCode, payload) {
   const body = Buffer.from(JSON.stringify(payload, null, 2));
-  res.writeHead(200, {
+  res.writeHead(statusCode, {
     "content-type": "application/json; charset=utf-8",
     "content-length": String(body.length),
     "cache-control": "no-store",
   });
   res.end(body);
+}
+
+async function handleStatusRequest(res) {
+  writeJson(res, 200, buildStatusSnapshot());
+}
+
+async function handleConfigRequest(req, res) {
+  const method = (req.method || "GET").toUpperCase();
+
+  if (method === "GET") {
+    writeJson(res, 200, buildConfigSnapshot());
+    return;
+  }
+
+  if (method === "DELETE") {
+    writeJson(res, 200, resetConfig());
+    return;
+  }
+
+  if (method !== "POST" && method !== "PUT" && method !== "PATCH") {
+    writeJson(res, 405, { error: "method_not_allowed" });
+    return;
+  }
+
+  try {
+    const rawBody = await readRequestBody(req);
+    const payload = rawBody.length === 0 ? {} : JSON.parse(rawBody.toString("utf8"));
+    writeJson(res, 200, updateConfig(payload));
+  } catch (error) {
+    const statusCode = Number.isInteger(error?.statusCode) ? error.statusCode : 400;
+    writeJson(res, statusCode, {
+      error: "invalid_config",
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
 }
 
 async function handleBufferedResponse(upstreamResponse, res, context) {
@@ -1362,6 +1464,11 @@ async function handleProxyRequest(req, res) {
     return;
   }
 
+  if (requestUrl.pathname === CONFIG_PATH) {
+    await handleConfigRequest(req, res);
+    return;
+  }
+
   const rawBody = await readRequestBody(req);
   const { body, patchedCount, sessionInfo, parsedBody } = await transformBody(
     req,
@@ -1412,7 +1519,14 @@ function startStateMaintenance() {
   }, 30_000).unref();
 }
 
-export { buildStatusSnapshot, buildUpstreamUrl, patchJsonPayload };
+export {
+  buildConfigSnapshot,
+  buildStatusSnapshot,
+  buildUpstreamUrl,
+  patchJsonPayload,
+  resetConfig,
+  updateConfig,
+};
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   startStateMaintenance();
@@ -1424,7 +1538,8 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   });
 
   server.listen(LISTEN_PORT, LISTEN_HOST, () => {
-    logInfo(`listening on http://${LISTEN_HOST}:${LISTEN_PORT} -> ${UPSTREAM_BASE_URL.href}`);
+    logInfo(`listening on http://${LISTEN_HOST}:${LISTEN_PORT} -> ${getUpstreamBaseUrl().href}`);
     logInfo(`status endpoint available at http://${LISTEN_HOST}:${LISTEN_PORT}${STATUS_PATH}`);
+    logInfo(`config endpoint available at http://${LISTEN_HOST}:${LISTEN_PORT}${CONFIG_PATH}`);
   });
 }

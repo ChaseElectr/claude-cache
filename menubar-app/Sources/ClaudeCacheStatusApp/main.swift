@@ -10,6 +10,9 @@ private let proxyStatusURL: URL = {
     }
     return URL(string: value) ?? defaultProxyStatusURL
 }()
+private let proxyConfigURL = proxyStatusURL
+    .deletingLastPathComponent()
+    .appendingPathComponent("__config")
 private let proxyErrorLogURL = URL(fileURLWithPath: NSHomeDirectory())
     .appendingPathComponent("Library/Logs/claude-openrouter-ttl-1h.error.log")
 private let proxyOutLogURL = URL(fileURLWithPath: NSHomeDirectory())
@@ -45,6 +48,7 @@ struct MonitorSnapshot: Decodable {
         let cache_write_chart_window_seconds: Int
         let cache_write_chart_bucket_seconds: Int
         let status_endpoint: String
+        let config_endpoint: String?
     }
 
     struct CacheWrite: Decodable, Identifiable {
@@ -127,6 +131,16 @@ struct MonitorSnapshot: Decodable {
     let sessions: [Session]
 }
 
+struct ProxyConfigResponse: Decodable {
+    let upstream_base_url: String
+    let default_upstream_base_url: String
+    let config_endpoint: String
+}
+
+struct ProxyConfigUpdateRequest: Encodable {
+    let upstream_base_url: String
+}
+
 func parseISODate(_ value: String?) -> Date? {
     guard let value else {
         return nil
@@ -198,6 +212,9 @@ final class MonitorStore: ObservableObject {
     @Published var lastError: String?
     @Published var now = Date()
     @Published var isRefreshing = false
+    @Published var isSavingConfig = false
+    @Published var configError: String?
+    @Published var configMessage: String?
 
     private var refreshTask: Task<Void, Never>?
     private var clockTask: Task<Void, Never>?
@@ -250,6 +267,59 @@ final class MonitorStore: ObservableObject {
 
     var activeCacheWrites: [MonitorSnapshot.CacheWrite] {
         snapshot?.cache_writes.filter(\.is_active) ?? []
+    }
+
+    func updateUpstreamBaseURL(_ value: String) async {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            configError = "upstream URL is required"
+            configMessage = nil
+            return
+        }
+
+        await sendConfigRequest(method: "PATCH", body: ProxyConfigUpdateRequest(upstream_base_url: trimmed))
+    }
+
+    func resetUpstreamBaseURL() async {
+        await sendConfigRequest(method: "DELETE", body: Optional<ProxyConfigUpdateRequest>.none)
+    }
+
+    private func sendConfigRequest<T: Encodable>(method: String, body: T?) async {
+        if isSavingConfig {
+            return
+        }
+
+        isSavingConfig = true
+        configError = nil
+        configMessage = nil
+        defer { isSavingConfig = false }
+
+        do {
+            var request = URLRequest(url: proxyConfigURL)
+            request.httpMethod = method
+            request.setValue("application/json", forHTTPHeaderField: "accept")
+            if let body {
+                request.setValue("application/json", forHTTPHeaderField: "content-type")
+                request.httpBody = try JSONEncoder().encode(body)
+            }
+
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse else {
+                configError = "proxy returned an unexpected response"
+                return
+            }
+            guard (200..<300).contains(httpResponse.statusCode) else {
+                let message = String(data: data, encoding: .utf8) ?? "request failed"
+                configError = "proxy rejected config: \(message)"
+                return
+            }
+
+            let decoded = try JSONDecoder().decode(ProxyConfigResponse.self, from: data)
+            configMessage = "saved: \(decoded.upstream_base_url)"
+            await refresh()
+        } catch {
+            configError = error.localizedDescription
+        }
     }
 }
 
@@ -526,6 +596,90 @@ struct CacheWriteCardView: View {
     }
 }
 
+struct UpstreamConfigView: View {
+    @ObservedObject var store: MonitorStore
+    let snapshot: MonitorSnapshot
+    @State private var draft = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Upstream")
+                    .font(.headline)
+                Spacer()
+                Text(snapshot.service.upstream_base_url)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .textSelection(.enabled)
+            }
+
+            HStack(spacing: 8) {
+                TextField("https://api.example.com", text: $draft)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(.body, design: .monospaced))
+                    .disabled(store.isSavingConfig)
+
+                Button("Save") {
+                    Task { await store.updateUpstreamBaseURL(draft) }
+                }
+                .disabled(store.isSavingConfig || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                Button("Reset") {
+                    Task { await store.resetUpstreamBaseURL() }
+                }
+                .disabled(store.isSavingConfig)
+
+                Button("Copy") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(snapshot.service.upstream_base_url, forType: .string)
+                }
+            }
+
+            HStack {
+                if store.isSavingConfig {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("saving")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else if let configError = store.configError {
+                    Text(configError)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .lineLimit(2)
+                } else if let configMessage = store.configMessage {
+                    Text(configMessage)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                } else {
+                    Text(proxyConfigURL.absoluteString)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+
+                Spacer()
+            }
+        }
+        .padding(12)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .onAppear {
+            draft = snapshot.service.upstream_base_url
+        }
+        .onChange(of: snapshot.service.upstream_base_url) { newValue in
+            if !store.isSavingConfig {
+                draft = newValue
+            }
+        }
+    }
+}
+
 struct RootView: View {
     @ObservedObject var store: MonitorStore
 
@@ -553,6 +707,8 @@ struct RootView: View {
             }
 
             if let snapshot = store.snapshot {
+                UpstreamConfigView(store: store, snapshot: snapshot)
+
                 HStack(spacing: 10) {
                     MetricPill(
                         title: "Active Cache Writes",

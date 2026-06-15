@@ -11,13 +11,30 @@ process.env.OPENROUTER_BASE_URL = "https://openrouter.ai/api";
 process.env.CLAUDE_CACHE_HOST = "127.0.0.1";
 process.env.CLAUDE_CACHE_PORT = "3456";
 
-const { buildUpstreamUrl, patchJsonPayload } = await import("../openrouter-ttl-1h-proxy.mjs");
+const {
+  buildConfigSnapshot,
+  buildUpstreamUrl,
+  patchJsonPayload,
+  resetConfig,
+  updateConfig,
+} = await import("../openrouter-ttl-1h-proxy.mjs");
 
 describe("buildUpstreamUrl", () => {
   it("maps local request paths onto the OpenRouter API base", () => {
     const url = buildUpstreamUrl("/v1/messages?stream=true");
 
     assert.equal(url.href, "https://openrouter.ai/api/v1/messages?stream=true");
+  });
+
+  it("uses configured upstream base URL", () => {
+    updateConfig({ upstream_base_url: "https://gateway.example.test/anthropic" });
+
+    const url = buildUpstreamUrl("/v1/messages?stream=true");
+
+    assert.equal(url.href, "https://gateway.example.test/anthropic/v1/messages?stream=true");
+    assert.equal(buildConfigSnapshot().upstream_base_url, "https://gateway.example.test/anthropic");
+
+    resetConfig();
   });
 });
 

@@ -102,7 +102,20 @@ npm run check
 | `CLAUDE_CACHE_APP_SUPPORT_DIR` | `~/Library/Application Support/claude-openrouter-ttl-1h` | 默认应用支持目录 |
 | `CLAUDE_CACHE_STATE_FILE` | `~/Library/Application Support/claude-openrouter-ttl-1h/state.json` | 持久化统计文件 |
 | `CLAUDE_CACHE_VERBOSE` | `false` | 设为 `1`、`true`、`yes` 或 `on` 可启用详细日志 |
-| `OPENROUTER_BASE_URL` | `https://openrouter.ai/api` | OpenRouter 上游 API 地址 |
+| `OPENROUTER_BASE_URL` | `https://openrouter.ai/api` | 默认上游 Anthropic-compatible API 地址 |
+
+上游地址也可以在菜单栏应用里运行时修改。代理会把配置持久化到 state 文件，
+新请求会立即使用新的上游地址，不需要重启。
+
+运行时配置接口：
+
+```bash
+curl -fsS http://127.0.0.1:3456/__config | python3 -m json.tool
+curl -fsS -X PATCH http://127.0.0.1:3456/__config \
+  -H 'content-type: application/json' \
+  -d '{"upstream_base_url":"https://api.anthropic.com"}'
+curl -fsS -X DELETE http://127.0.0.1:3456/__config
+```
 
 菜单栏应用支持：
 

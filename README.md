@@ -101,7 +101,21 @@ The proxy supports these environment variables:
 | `CLAUDE_CACHE_APP_SUPPORT_DIR` | `~/Library/Application Support/claude-openrouter-ttl-1h` | Default app support directory |
 | `CLAUDE_CACHE_STATE_FILE` | `~/Library/Application Support/claude-openrouter-ttl-1h/state.json` | Persistent metrics file |
 | `CLAUDE_CACHE_VERBOSE` | `false` | Enable verbose proxy logs with `1`, `true`, `yes`, or `on` |
-| `OPENROUTER_BASE_URL` | `https://openrouter.ai/api` | Upstream OpenRouter API base URL |
+| `OPENROUTER_BASE_URL` | `https://openrouter.ai/api` | Default upstream Anthropic-compatible API base URL |
+
+The upstream base URL can also be changed at runtime from the menu bar app. The
+proxy persists the value in its state file and applies it to new requests without
+restarting.
+
+Runtime config API:
+
+```bash
+curl -fsS http://127.0.0.1:3456/__config | python3 -m json.tool
+curl -fsS -X PATCH http://127.0.0.1:3456/__config \
+  -H 'content-type: application/json' \
+  -d '{"upstream_base_url":"https://api.anthropic.com"}'
+curl -fsS -X DELETE http://127.0.0.1:3456/__config
+```
 
 The menu bar app supports:
 
